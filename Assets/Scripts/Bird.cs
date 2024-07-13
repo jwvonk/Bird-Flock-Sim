@@ -2,24 +2,45 @@ using UnityEngine;
 
 public class Bird : MonoBehaviour
 {
+    [Tooltip("Maximum speed limit.")]
     public float maxSpeed = 48f;
+
+    [Tooltip("Minimum speed limit.")]
     public float minSpeed = 24f;
-    public float turnFactor = .2f;
+
+    [Tooltip("Turning speed factor for boundary avoidance.")]
+    public float boundsFactor = .2f;
+
+    [Tooltip("Range to see other birds for flocking.")]
     public float visualRange = 40f;
+
+    [Tooltip("Range to avoid other birds to prevent collision.")]
     public float protectedRange = 8f;
+
+    [Tooltip("Factor to move towards the average position of nearby birds.")]
     public float centeringFactor = 0.0005f;
+
+    [Tooltip("Factor to move away from nearby birds to avoid collisions.")]
     public float avoidFactor = 0.05f;
+
+    [Tooltip("Factor to align velocity with nearby birds.")]
     public float matchingFactor = 0.05f;
+
+    [Tooltip("Determines how quickly birds rotate to face movement vector.")]
     public float rotationFactor = .5f;
+
+    [Tooltip("Rate at which bias increases/decreases.")]
     public float biasIncrement = 0.00004f;
+
+    [Tooltip("Maximum limit for bias strength.")]
     public float maxBias = 0.01f;
 
     [HideInInspector] public int group;
 
     private Vector3 currentVelocity;
-    private float biasStrength;
+    private float biasStrength = 0;
 
-    private BoxCollider boundingBox;
+    private BoxCollider boundingBox; // Bounding box collider for the flock area
 
     private bool inBounds = true;
 
@@ -36,13 +57,27 @@ public class Bird : MonoBehaviour
         {
             CalculateFlocking();
             UpdateBias();
-        }   
+        }
         EnforceSpeedLimits();
         MoveAndRotate();
     }
 
+    void EnforceBounds()
+    {
+        if (!boundingBox) return;
+        Bounds bounds = boundingBox.bounds;
+        inBounds = bounds.Contains(transform.position);
+
+        // If outside bounds, accelerate towards bounding box
+        if (!inBounds)
+        {
+            Vector3 closestPoint = bounds.ClosestPoint(transform.position);
+            currentVelocity += (closestPoint - transform.position).normalized * boundsFactor;
+        }
+    }
+
     // Boids Algorithm
-    // https://vanhunteradams.com/Pico/Animal_Movement/Boids-algorithm.html
+    // Reference: https://vanhunteradams.com/Pico/Animal_Movement/Boids-algorithm.html
     void CalculateFlocking()
     {
         // Zero accumulator vars
@@ -51,22 +86,30 @@ public class Bird : MonoBehaviour
         Vector3 averagePosition = Vector3.zero;
         int neighborCount = 0;
 
+        // Find birds within protected range
+        Collider[] closeBirdColliders = Physics.OverlapSphere(transform.position, protectedRange);
+        foreach (Collider collider in closeBirdColliders)
+        {
+            Bird bird = collider.GetComponentInParent<Bird>();
+            if (bird == this || bird == null) continue; // Filter out ourselves && non-birds
+
+            // Accumulate movement vector to move away from close birds
+            closeDifferential += transform.position - bird.transform.position;
+        }
+
+        // Find birds within visible range
         Collider[] visibleBirdColliders = Physics.OverlapSphere(transform.position, visualRange);
         foreach (Collider collider in visibleBirdColliders)
         {
-            Bird bird = collider.GetComponent<Bird>();
-            if (bird == this) continue;
-            float distance = Vector3.Distance(transform.position, bird.transform.position);
+            Bird bird = collider.GetComponentInParent<Bird>();
+            if (bird == this || bird == null) continue;// Filter out ourselves && non-birds
 
-            if (distance < protectedRange)
-            {
-                closeDifferential += transform.position - bird.transform.position;
-            }
             averageVelocity += bird.currentVelocity;
             averagePosition += bird.transform.position;
             neighborCount++;
         }
 
+        // Move away from close birds
         currentVelocity += closeDifferential * avoidFactor;
 
         if (neighborCount > 0)
@@ -74,39 +117,35 @@ public class Bird : MonoBehaviour
             averageVelocity /= neighborCount;
             averagePosition /= neighborCount;
 
+            // Align flight direction with visible birds
             currentVelocity += (averageVelocity - currentVelocity) * matchingFactor;
+
+            // Move towards center point of visible birds
             currentVelocity += (averagePosition - transform.position) * centeringFactor;
         }
     }
-
-    void EnforceBounds()
-    {
-        if (!boundingBox) return;
-        Bounds bounds = boundingBox.bounds;
-        inBounds = bounds.Contains(transform.position);
-        if (!inBounds)
-        {
-            Vector3 closestPoint = bounds.ClosestPoint(transform.position);
-            currentVelocity += (closestPoint - transform.position).normalized * turnFactor;
-        }
-    }
-
+    // Update the bias based on the group and velocity
+    // Reference: https://vanhunteradams.com/Pico/Animal_Movement/Boids-algorithm.html#Bias
     void UpdateBias()
     {
-        if (group == 0)
+        if (group == 0) // Biased to positive x
         {
+            // Bias strength increases if x velocity is positive, decreases if negative
             biasStrength += currentVelocity.x > 0 ? biasIncrement : -biasIncrement;
         }
-        else if (group == 1)
+        else if (group == 1) // biased to negative x
         {
+            // bias strength increases if x velocity is negative, decreases if positive
             biasStrength += currentVelocity.x < 0 ? biasIncrement : -biasIncrement;
         }
         Mathf.Clamp(biasStrength, biasIncrement, maxBias);
 
+        // Apply bias
         currentVelocity.x = (1 - biasStrength) * currentVelocity.x + (group == 0 ? biasStrength : -biasStrength);
 
     }
 
+    // Constrain speed to within user-defined min and max
     void EnforceSpeedLimits()
     {
         var speed = currentVelocity.magnitude;
@@ -123,11 +162,10 @@ public class Bird : MonoBehaviour
 
     void MoveAndRotate()
     {
-        // Move and rotate the bird
+        // Apply velocity
         transform.position += currentVelocity * Time.deltaTime;
-        if (currentVelocity != Vector3.zero)
-        {
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(currentVelocity), rotationFactor * Time.deltaTime);
-        }
+
+        // rotate towards motion vector
+        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(currentVelocity), rotationFactor * Time.deltaTime);
     }
 }

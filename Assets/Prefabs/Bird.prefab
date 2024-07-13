@@ -47,7 +47,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   maxSpeed: 48
   minSpeed: 24
-  turnFactor: 0.2
+  boundsFactor: 0.4
   visualRange: 20
   protectedRange: 4
   centeringFactor: 0.0005

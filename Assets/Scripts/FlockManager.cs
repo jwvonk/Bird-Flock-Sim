@@ -3,7 +3,7 @@ using UnityEngine;
 public class FlockManager : MonoBehaviour
 {
     public GameObject birdPrefab;
-    public int flockSize = 500;
+    public int flockSize = 100;
     public BoxCollider birdBounds;
 
     void Start()
@@ -12,7 +12,10 @@ public class FlockManager : MonoBehaviour
         {
             Vector3 spawnPosition = GetRandomPointInBounds(birdBounds);
             GameObject bird = Instantiate(birdPrefab, spawnPosition, Quaternion.identity);
-            bird.GetComponent<Bird>().group = i % 2;
+
+            // Group 0 : Scout group A
+            // Group 1 : Scout group B
+            bird.GetComponent<Bird>().group = i % 4;
         }
     }
 
